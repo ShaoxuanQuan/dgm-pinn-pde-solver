@@ -13,7 +13,6 @@ def div(u, points, i=0):
     grad_outputs = torch.ones_like(u)
     gradient = grad(u, points, grad_outputs=grad_outputs, create_graph=True)[0]
 
-    # 然后返回对应分量的梯度
     return gradient[:, i:i + 1]
 
 
@@ -50,7 +49,6 @@ class RiskyAssetConfig:
         return x ** self.γ
 
 
-# --- HJBSolver 类 (核心修改) ---
 class HJBSolver:
     def __init__(self, model_config, hjb_config, actor_net, critic_net):
         if torch.cuda.is_available():
@@ -70,11 +68,9 @@ class HJBSolver:
         self._initialize_loss_functions()
         self._initialize_alpha_annealing()
 
-        # 新增: 初始化 gPINN 的权重
         self.gpinn_weight = self.config.get("gpinn_weight", 0.1)
 
     def _initialize_optimizers(self):
-        # ... (保持不变)
         self.actor_optimizer = torch.optim.Adam(self.actor_net.parameters(), lr=self.config["lr_actor"])
         self.critic_optimizer = torch.optim.Adam(self.critic_net.parameters(), lr=self.config["lr_critic"])
         self.actor_scheduler = StepLR(self.actor_optimizer, step_size=self.config["lr_decay_step"],
@@ -83,8 +79,6 @@ class HJBSolver:
                                        gamma=self.config["lr_decay_gamma"])
 
     def _initialize_samplers(self):
-        """封装采样器的创建"""
-        # 这个实现是正确的，因为它从 self.hjb 和 self.config 中提取了所有必要的参数
         self.domain_sampler = ControlledDriftSamplerHJB(
             hjb_config=self.hjb,
             T=self.hjb.T,
@@ -99,7 +93,6 @@ class HJBSolver:
             batch_size=self.config["terminal_batch_size"]
         )
     def _initialize_loss_functions(self):
-        # --- 恢复到只定义损失函数的形式 ---
         self.terminal_criterion = lambda J, points: \
             torch.mean(torch.square(J - self.hjb.terminal_cost(points)))
 
@@ -107,23 +100,19 @@ class HJBSolver:
             torch.mean(-self.hjb.hamiltonian(J, u, points))
 
     def _initialize_alpha_annealing(self):
-        # ... (保持不变)
         self.initial_alpha = self.config.get("initial_alpha", 0.0)
         self.final_alpha = self.config.get("final_alpha", 1.0)
         self.alpha_anneal_end = self.config.get("alpha_anneal_end", 5000)
         self.current_alpha = self.initial_alpha
 
     def _update_alpha(self, iteration):
-        # ... (保持不变)
         if iteration < self.alpha_anneal_end:
             self.current_alpha = self.initial_alpha + (self.final_alpha - self.initial_alpha) * (
                         iteration / self.alpha_anneal_end)
         else:
             self.current_alpha = self.final_alpha
 
-    # ==================== 核心修改: _compute_critic_loss ====================
     def _compute_critic_loss(self, domain_points, terminal_points):
-        # 确保domain_points可以计算梯度，为gPINN做准备
         domain_points.requires_grad_(True)
 
         with torch.no_grad():
@@ -133,21 +122,16 @@ class HJBSolver:
         J_domain = self.critic_net(domain_points)
         J_terminal = self.critic_net(terminal_points)
 
-        # 1. 计算 HJB 残差
         hjb_residual = div(J_domain, domain_points, i=0) + self.hjb.hamiltonian(J_domain, u_effective, domain_points)
 
-        # 2. 计算标准 PINN 损失 (loss_f)
         loss_f = torch.mean(hjb_residual ** 2)
 
-        # 3. 实现 gPINN: 计算残差的梯度损失 (loss_g)
         residual_t = div(hjb_residual, domain_points, i=0)
         residual_x = div(hjb_residual, domain_points, i=1)
         loss_g = torch.mean(residual_t ** 2) + torch.mean(residual_x ** 2)
 
-        # 4. 计算终端损失
         loss_terminal = self.terminal_criterion(J_terminal, terminal_points)
 
-        # 5. 组合总损失，使用固定的终端权重
         total_critic_loss = (loss_f + self.gpinn_weight * loss_g) + self.config["terminal_weight"] * loss_terminal
 
         return total_critic_loss, {
@@ -213,4 +197,5 @@ class HJBSolver:
                 pbar.set_postfix(ordered_dict=postfix_dict)
 
         print("Training finished.")
+
         return loss_history
