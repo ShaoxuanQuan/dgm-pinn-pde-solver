@@ -17,7 +17,7 @@ class BSSolver:
         self.terminal_config = terminal_condition
         self.optimizer = optimizer
         self.scheduler = scheduler
-        self.pde_sampler = pde_sampler  # <--- 改变2: 分别存储采样器
+        self.pde_sampler = pde_sampler 
         self.terminal_sampler = terminal_sampler
         self.lambda_terminal = lambda_terminal
         self.lambda_g_pde = lambda_g_pde
@@ -32,7 +32,7 @@ class BSSolver:
         loss_g = torch.mean(residual_t ** 2) + torch.mean(residual_s ** 2)
         return loss_f + self.lambda_g_pde * loss_g
 
-    def _compute_terminal_loss(self, terminal_points: torch.Tensor) -> torch.Tensor:  # <--- 改变3: 接收采样点作为输入
+    def _compute_terminal_loss(self, terminal_points: torch.Tensor) -> torch.Tensor: 
         tc = self.terminal_config
         s = terminal_points[:, 1:2]
 
@@ -41,7 +41,7 @@ class BSSolver:
 
         return torch.mean((pred_values - true_values) ** 2)
 
-    def solve(self, num_iterations: int, alpha_decay_rate: float):  # <--- 改变4: 不再需要 sde_time_step
+    def solve(self, num_iterations: int, alpha_decay_rate: float): 
         loss_history = []
         pbar = tqdm(range(num_iterations), desc="Solving BS PDE (gPINN)", ncols=120)
 
@@ -49,27 +49,19 @@ class BSSolver:
             self.model.train()
             self.optimizer.zero_grad()
 
-            # --- 核心修改：采样和损失计算流程 ---
-            # 步骤1: 分别从两个采样器中获取点
-            pde_points = self.pde_sampler.sample_batch(self.model)  # <--- 改变5: pde_sampler现在不依赖sde_time_step
-            terminal_points = self.terminal_sampler.sample_batch()  # <--- 改变6: 调用新的终端采样器
+            pde_points = self.pde_sampler.sample_batch(self.model) 
+            terminal_points = self.terminal_sampler.sample_batch() 
 
-            # 步骤2: 分别计算损失
             loss_pde = self._compute_pde_loss(pde_points)
             loss_terminal = self._compute_terminal_loss(terminal_points)
 
-            # 步骤3: 汇总损失并进行优化
             total_loss = loss_pde + self.lambda_terminal * loss_terminal
             total_loss.backward()
             self.optimizer.step()
             self.scheduler.step()
 
-            # 步骤4: 更新采样器状态（如果需要）
-            # 注意: update_alpha 可能需要移到 pde_sampler 内部，这里暂时保留
-            # 在新的设计中，采样器可以自我管理更多状态
             self.pde_sampler.update_alpha(alpha_decay_rate)
-            # 让pde_sampler有机会根据模型输出进行更新
-            # 这是一个占位符，之后ControlleddriftSampler会实现这个方法
+
             if hasattr(self.pde_sampler, 'update'):
                 self.pde_sampler.update(loss_pde.item())
 
@@ -83,7 +75,6 @@ class BSSolver:
             if (i + 1) % 100 == 0:
                 pbar.set_postfix(
                     loss=f"{loss_dict['total_loss']:.2e}",
-                    # alpha 的访问方式可能改变，取决于采样器的实现
                     alpha=f"{self.pde_sampler.alpha:.3f}",
                     lr=f"{self.optimizer.param_groups[0]['lr']:.2e}"
                 )
@@ -95,7 +86,6 @@ class BSSolver:
 
 class BSSolver_2D:
 
-    # 构造函数与一维版本基本一致
     def __init__(self, model: nn.Module, pde_params: dict, terminal_condition: dict,
                  optimizer: torch.optim.Optimizer, scheduler: StepLR,
                  pde_sampler, terminal_sampler,
@@ -113,7 +103,6 @@ class BSSolver_2D:
 
     def _compute_pde_loss(self, pde_points: torch.Tensor) -> torch.Tensor:
 
-        # 调用新的二维残差计算函数
         residual_dict = compute_residual_and_grads_2D(pde_points, self.model, self.pde_params)
 
         residual = residual_dict['residual']
@@ -181,3 +170,4 @@ class BSSolver_2D:
 
         print("Training finished.")
         return loss_history
+
