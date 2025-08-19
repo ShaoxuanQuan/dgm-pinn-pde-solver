@@ -23,7 +23,7 @@ class ControlledDriftSamplerHJB:
         self.current_points = self._initialize_points()
 
         self.boundary_memory = self._initialize_points(batch_size=boundary_memory_size)
-        self.boundary_memory[:, 0:1] = self.T  # 强制时间为T
+        self.boundary_memory[:, 0:1] = self.T 
 
         self.u = torch.zeros(self.batch_size, self.hjb.sol_dim, device=self.device)
 
@@ -33,7 +33,6 @@ class ControlledDriftSamplerHJB:
         return self.T / N
 
     def _initialize_points(self, batch_size=None):
-        """在 t=0 时，根据问题特性初始化粒子状态 x。"""
         if batch_size is None:
             batch_size = self.batch_size
 
@@ -58,39 +57,31 @@ class ControlledDriftSamplerHJB:
         return self.current_points.clone().detach().requires_grad_(True)
 
     def update(self, u_from_actor: torch.Tensor):
-        """
-        [核心职责2] 根据演员网络给出的最新控制项u，将所有粒子向前推进一个时间步。
-        这个方法由HJBSolver在每次训练迭代后调用。
-        """
+
         with torch.no_grad():
             self.u = u_from_actor.detach()
 
             t_current = self.current_points[:, 0:1]
-            x_current = self.current_points[:, 1:]  # 支持多维状态x
+            x_current = self.current_points[:, 1:] 
 
             x_next = self._sde_step(x_current, self.u, self.dt)
             t_next = t_current + self.dt
 
-            # 生产者逻辑：检查并处理到达终端时间的粒子
             expired_mask = (t_next.squeeze() >= self.T)
             num_expired = expired_mask.sum().item()
 
             if num_expired > 0:
-                # 1. 捕获到达边界的粒子状态
                 expired_points = torch.cat([
                     torch.full_like(x_next[expired_mask], self.T),
                     x_next[expired_mask]
                 ], dim=1)
 
-                # 2. 存入共享内存，供TerminalSampler消费
                 self.boundary_memory = torch.cat([expired_points, self.boundary_memory[:-num_expired]], dim=0)
 
-                # 3. 重置这些粒子到 t=0
                 reinitialized_points = self._initialize_points(batch_size=num_expired)
                 t_next[expired_mask] = reinitialized_points[:, 0:1]
                 x_next[expired_mask] = reinitialized_points[:, 1:]
 
-                # 4. 为新路径分配新的随机步长
                 self.dt[expired_mask] = self._initialize_dt()[:num_expired]
 
             self.current_points = torch.cat([t_next, x_next], dim=1)
@@ -105,4 +96,5 @@ class TerminalSampler:
     def sample_batch(self):
         memory_size = self.domain_sampler.boundary_memory.shape[0]
         indices = torch.randint(0, memory_size, (self.batch_size,), device=self.domain_sampler.device)
+
         return self.domain_sampler.boundary_memory[indices].clone().detach().requires_grad_(True)
