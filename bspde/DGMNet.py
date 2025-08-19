@@ -71,14 +71,11 @@ class ResNet(nn.Module):
 
         self.constrain_output = constrain_output
         if self.constrain_output:
-            # 使用 nn.Sequential 将输出层和 Sigmoid 包装在一起
-            # 这样做的好处是逻辑清晰，并且能正确处理权重初始化
             self.output_head = nn.Sequential(
                 self.output_layer,
                 nn.Sigmoid()
             )
         else:
-            # 如果不约束，输出头就是原始的输出层
             self.output_head = self.output_layer
         # ----------------------------------------------------
 
@@ -100,5 +97,6 @@ class ResNet(nn.Module):
         h = self.input_layer(x_normalized)
         for block in self.hidden_blocks:
             h = h + block(h)
+
 
         return self.output_head(h)
