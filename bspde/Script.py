@@ -23,7 +23,6 @@ class TerminalSampler:
         return self.pde_sampler.boundary_memory[indices].clone().detach().requires_grad_(True)
 
 
-# === 步骤 2: 主脚本 ===
 if __name__ == '__main__':
     DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
     print(f"Using device: {DEVICE}")
@@ -57,9 +56,6 @@ if __name__ == '__main__':
     optimizer = torch.optim.Adam(dgm_model.parameters(), lr=TRAIN_PARAMS['lr'])
     scheduler = StepLR(optimizer, step_size=TRAIN_PARAMS['lr_decay_step'], gamma=TRAIN_PARAMS['lr_decay_gamma'])
 
-    # --- 核心修改：实例化采样器 ---
-
-    # 1. 创建 pde_sampler (生产者)
     pde_sampler = ControlledDriftSampler(
         pde_params=FIN_PARAMS,
         T=FIN_PARAMS['T'],
@@ -111,3 +107,4 @@ if __name__ == '__main__':
     print("           Training Complete!")
     print(f"   Model state dictionary saved to: {MODEL_SAVE_PATH}")
     print("=" * 50)
+
