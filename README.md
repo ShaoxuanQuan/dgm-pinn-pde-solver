@@ -1,6 +1,3 @@
-# dgm-pinn-pde-solver
-An implementation of the Deep Galerkin Method (DGM) enhanced with a controlled drift sampler and PINN techniques to solve Black-Scholes and HJB equations.
-
 # DGM-PINN Solver for Financial PDEs
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
